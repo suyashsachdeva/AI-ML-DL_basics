@@ -5,5 +5,5 @@ Instructions about this repository:
 2. After your project is accepted your have to make a folder which starts by your_name_project_idea.
 3. Make a readme inside that folder discribing your project starting with problem statement -> how does your work solve it -> how are you going to make it.
 
-4. Projects:
-5. - Suyash: One-Short learning 
+Projects:
+- Suyash: One-Short learning 
