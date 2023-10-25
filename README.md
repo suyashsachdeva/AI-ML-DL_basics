@@ -6,7 +6,7 @@
 3. Make a readme inside that folder discribing your project starting with problem statement -> how does your work solve it -> how are you going to make it.
 
 ## Projects:
-- Suyash: One-Short learning 
+- Suyash: One-Short learning of faces
 
 
 
