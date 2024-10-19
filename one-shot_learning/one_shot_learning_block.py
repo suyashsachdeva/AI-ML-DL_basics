@@ -8,49 +8,37 @@ from torch.utils.data import DataLoader, Dataset
 from torchsummary import summary
 
 
-class OneShot(nn.Module):
-    def __init__(self, n_blocks: int = 7, n_high_refine: int = 3, n_conv_high_refine: int = 3, 
-                 n_conv_end: int = 2, filters: int = 64, start_kernel: int = 5, kernel: int = 3, 
-                 growth_factor: float = 2.0, alpha: float = 0.07, moment: float = 0.7, dense: int = 512, 
-                 final: int = 100, drop: float = 0.2, stride: bool = True):
-        super(OneShot, self).__init__()
+class ConvBlock(nn.Module):
+    def __init__(self, n_layers: int, filters: int, kernel: int = 3, growth_factor: float = 2.0, 
+                 moment: float = 0.7, stride: bool = True, alpha: float = 0.03):
+        super(ConvBlock, self).__init__()
+        PADDING = (kernel - 1) // 2  # Padding based on the kernel size
+        self.stride = stride
 
-        START_PADDING = (start_kernel - 1) // 2  # Padding for the starting convolution
-        PADDING = (kernel - 1) // 2  # Padding for regular convolution layers
-
-        # Initial convolutional layer with stride
-        self.conv = nn.ModuleList([nn.Conv2d(3, filters, start_kernel, stride=2, padding=START_PADDING)])
+        # Batch normalization layers
+        self.norm = nn.ModuleList([nn.BatchNorm1d(num_features=filters, momentum=moment) for _ in range(n_layers)])
         
-        # Adding convolutional blocks
-        for c in range(n_blocks):
-            filters = int(filters * growth_factor)
-            if c <= n_high_refine:
-                # Add a high refinement ConvBlock
-                self.conv.append(ConvBlock(n_conv_high_refine, filters, kernel, growth_factor, moment, stride, alpha))
-            else:
-                # Add an end refinement ConvBlock
-                self.conv.append(ConvBlock(n_conv_end, filters, kernel, growth_factor, moment, stride, alpha))
+        # Convolutional layers
+        self.conv = nn.ModuleList([nn.Conv2d(filters, filters, kernel, padding=PADDING) for _ in range(n_layers - 1)])
         
-        # Adaptive average pooling to reduce feature map size
-        self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        
-        # Flatten the output of the pooling layer
-        self.flat = nn.Flatten()
-        
-        # Fully connected layers for classification
-        self.lden = nn.Linear(int(filters * growth_factor), dense)
-        self.lvec = nn.Linear(dense, final)
-        
-        # Activation and dropout
+        # Non-linear activation function
         self.nlin = nn.LeakyReLU(alpha)
-        self.drop = nn.Dropout(drop)
+
+        # Add final convolutional layer with stride or max pooling if applicable
+        if stride:
+            self.conv.append(nn.Conv2d(int(filters // growth_factor), filters, kernel, stride=2, padding=PADDING))
+        else:
+            self.conv.append(nn.Conv2d(int(filters // growth_factor), filters, kernel, padding=PADDING))
+            self.pool = nn.MaxPool2d(2, 2)  # Max pooling layer
+
+        self.conv.reverse()  # Reverse the convolution layers for the forward pass
 
     def forward(self, x):
-        # Pass input through each convolutional block
-        for conv in self.conv:
-            x = conv(x)
+        if not self.stride:
+            x = self.pool(x)
+        
+        # Pass through convolutional and normalization layers with activation
+        for conv, norm in zip(self.conv, self.norm):
+            x = self.nlin(norm(conv(x)))
+        return x
 
-        # Pool, flatten, and apply the fully connected layers with dropout
-        x = self.flat(self.pool(x))
-        x = self.drop(self.nlin(self.lden))
-        return self.lvec(x)
